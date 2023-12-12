@@ -209,7 +209,7 @@ void ZimmerGripper::gripper_init()
     reg_write[1] = 3*256 + 0;
     reg_write[2] = 50;
     reg_write[3] = gripper_force*256 + gripper_velocity;
-	reg_write[4] = 1000;
+	reg_write[4] = 800;
 	reg_write[5] = 1200;
     reg_write[7] = 4000;
 
@@ -229,7 +229,7 @@ void ZimmerGripper::gripper_grip(bool sync)
         reg_write[1] = 3*256 + 0;
         reg_write[2] = 50;
         reg_write[3] = gripper_force*256 + gripper_velocity;
-		reg_write[4] = 1000;
+		reg_write[4] = 800;
 		reg_write[5] = 1200;
         reg_write[7] = 4000;
 
@@ -251,7 +251,7 @@ void ZimmerGripper::gripper_release(bool sync)
         reg_write[1] = 3*256 + 0;
         reg_write[2] = 50;
         reg_write[3] = gripper_force*256 + gripper_velocity;
-		reg_write[4] = 1000;
+		reg_write[4] = 800;
 		reg_write[5] = 1200;
         reg_write[7] = 4000;
 

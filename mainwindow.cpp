@@ -5,13 +5,11 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent), ui(new Ui::MainWi
 {
     ui->setupUi(this);
 
-	system("pause");
-
     gripper = new ZimmerGripper();
     memset(gripper_write_reg, 0, sizeof(uint16_t)*NUM_SEND_REG);
     memset(gripper_read_reg, 0, sizeof(uint16_t)*NUM_RECV_REG);
 
-    connect(ui->btnRobotConnect, SIGNAL(clicked()), this, SLOT(btnRobotConnectClicked()));
+	QObject::connect(ui->btnRobotConnect, SIGNAL(clicked()), this, SLOT(btnRobotConnectClicked()));
     connect(ui->btnGripperConnect, SIGNAL(clicked()), this, SLOT(btnGripperConnectClicked()));
     connect(ui->btnInit, SIGNAL(clicked()), this, SLOT(btnInitClicked()));
     connect(ui->btnRun, SIGNAL(clicked()), this, SLOT(btnRunClicked()));
@@ -21,13 +19,8 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent), ui(new Ui::MainWi
     connect(ui->btnUnChuckObj, SIGNAL(clicked()), this, SLOT(btnUnChuckObjClicked()));
     connect(ui->btnDoorSwitch, SIGNAL(clicked()), this, SLOT(btnDoorSwitchClicked()));
     connect(ui->btnPlaceObj, SIGNAL(clicked()), this, SLOT(btnPlaceObjClicked()));
-    connect(ui->btnRePickObj, SIGNAL(clicked()), this, SLOT(btnRePickObjClicked()));
-    connect(ui->btnChuckObj2, SIGNAL(clicked()), this, SLOT(btnChuckObj2Clicked()));
-    connect(ui->btnUnChuckObj2, SIGNAL(clicked()), this, SLOT(btnUnChuckObj2Clicked()));
-    connect(ui->btnDoorSwitch2, SIGNAL(clicked()), this, SLOT(btnDoorSwitch2Clicked()));
-    connect(ui->btnRePlaceObj, SIGNAL(clicked()), this, SLOT(btnRePlaceObjClicked()));
-	connect(ui->btnLathStart, SIGNAL(clicked()), this, SLOT(btnLathStartClicked()));
-	connect(ui->btnLathWait, SIGNAL(clicked()), this, SLOT(btnLathWaitClicked()));
+	connect(ui->btnLatheStart, SIGNAL(clicked()), this, SLOT(btnLatheStartClicked()));
+	connect(ui->btnLatheWait, SIGNAL(clicked()), this, SLOT(btnLatheWaitClicked()));
 
     connect(ui->btnPrint, SIGNAL(clicked()), this, SLOT(btnPrintClicked()));
 
@@ -53,18 +46,15 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent), ui(new Ui::MainWi
     gripper_connected = false;
 
     move_complete = false;
-    moving = false;
+	robot_moving = false;
     cmd_flag = false;
     chuck_moving = false;
-
-    DI = 0;
-    DO = 0;
 
     door_cnt = 0;
     obj_cnt = 0;
 
     mainTimer = new QTimer(this);
-    mainTimer->setInterval(10);
+	mainTimer->setInterval(50);
     connect(mainTimer, SIGNAL(timeout()), this, SLOT(update()));
     mainTimer->start();
 
@@ -74,11 +64,36 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent), ui(new Ui::MainWi
 
 	customSettings = new CustomSettings(ui);
 	customSettings->loadConfigFile();
+
+	g_bHasControlAuthority = FALSE;
+	g_TpInitailizingComplted = FALSE;
+	g_mStat = FALSE;
+	g_Stop = FALSE;
+	moving = FALSE;
+
+	Drfl.set_on_homming_completed(OnHommingCompleted);
+	Drfl.set_on_monitoring_data(OnMonitoringDataCB);
+	Drfl.set_on_monitoring_data_ex(OnMonitoringDataExCB);
+	Drfl.set_on_monitoring_ctrl_io(OnMonitoringCtrlIOCB);
+	Drfl.set_on_monitoring_ctrl_io_ex(OnMonitoringCtrlIOExCB);
+	Drfl.set_on_monitoring_state(OnMonitoringStateCB);
+	Drfl.set_on_monitoring_access_control(OnMonitroingAccessControlCB);
+	Drfl.set_on_tp_initializing_completed(OnTpInitializingCompleted);
+	Drfl.set_on_log_alarm(OnLogAlarm);
+	Drfl.set_on_tp_popup(OnTpPopup);
+	Drfl.set_on_tp_log(OnTpLog);
+	Drfl.set_on_tp_progress(OnTpProgress);
+	Drfl.set_on_tp_get_user_input(OnTpGetuserInput);
+	Drfl.set_on_rt_monitoring_data(OnRTMonitoringData);
+
+	Drfl.set_on_program_stopped(OnProgramStopped);
+	Drfl.set_on_disconnected(OnDisConnected);
 }
 
 MainWindow::~MainWindow()
 {
 	customSettings->saveConfigFile();
+	Drfl.close_connection();
 	delete tcpSocket;
     delete customSettings;
     delete ui;
@@ -95,7 +110,7 @@ void MainWindow::update()
 	}
 
 	if(vision_connected){
-		emit visionUpdate();
+//		emit visionUpdate();
 	}
 
     if(robot_connected && gripper_connected){
@@ -121,6 +136,7 @@ void MainWindow::update()
 				pocState = 0;
                 pocSubState = 0;
                 ui->rbInit->setChecked(true);
+				obj_cnt = 0;
                 break;
             }
             case Start:
@@ -178,20 +194,20 @@ void MainWindow::POCControlFunc()
                     pocState = UnChuck1;
                 }
                 else{
-					pocState = LathStart1;
+					pocState = LatheStart1;
                 }
                 pocSubState = 0;
             }
             ui->rbDoor1->setChecked(true);
             break;
         }
-		case LathStart1:
+		case LatheStart1:
 		{
 			if(POCLatheStart1()){
 				pocState = LatheWait1;
 				pocSubState = 0;
 			}
-			ui->rbLathStart->setChecked(true);
+			ui->rbLatheStart->setChecked(true);
 			break;
 		}
         case LatheWait1:
@@ -200,7 +216,7 @@ void MainWindow::POCControlFunc()
 				pocState = Door1;
 				pocSubState = 0;
 			}
-			ui->rbLathWait->setChecked(true);
+			ui->rbLatheWait->setChecked(true);
             break;
         }
         case UnChuck1:
@@ -215,83 +231,15 @@ void MainWindow::POCControlFunc()
         case Place:
         {
             if(POCPlaceObj()){
-                pocState = RePick;
-                pocSubState = 0;
+				obj_cnt++;
+				if(obj_cnt == 1) obj_cnt = 2;
+				else if(obj_cnt == 3) obj_cnt = 9;
+				else if(obj_cnt == 10) obj_cnt = 11;
+
+				pocState = obj_cnt < 12 ? Pick : Ready;
+				pocSubState = 0;
             }
             ui->rbPlace->setChecked(true);
-            break;
-        }
-        case RePick:
-        {
-            if(POCRePickObj()){
-                pocState = Chuck2;
-                pocSubState = 0;
-            }
-            ui->rbRePick->setChecked(true);
-            break;
-        }
-        case Chuck2:
-        {
-            if(POCChuck2Obj()){
-                pocState = Door2;
-                pocSubState = 0;
-            }
-            ui->rbChuck2->setChecked(true);
-            break;
-        }
-        case Door2:
-        {
-            if(POCDoorSwitch1()){
-                if(door_cnt%2 == 0) {
-                    pocState = UnChuck2;
-                }
-                else{
-					pocState = LatheStart2;
-                }
-                pocSubState = 0;
-            }
-            ui->rbDoor2->setChecked(true);
-            break;
-        }
-		case LatheStart2:
-		{
-			if(POCLatheStart1()){
-				pocState = LatheWait2;
-				pocSubState = 0;
-			}
-			ui->rbLathStart->setChecked(true);
-			break;
-		}
-        case LatheWait2:
-        {
-			if(POCLatheWait1()){
-				pocState = Door2;
-				pocSubState = 0;
-			}
-			ui->rbLathWait->setChecked(true);
-            break;
-        }
-        case UnChuck2:
-        {
-            if(POCUnChuck2Obj()){
-                pocState = RePlace;
-                pocSubState = 0;
-            }
-            ui->rbChuck2->setChecked(true);
-            break;
-        }
-        case RePlace:
-        {
-            if(POCRePlaceObj()){
-                obj_cnt++;
-                if(obj_cnt == 1) obj_cnt = 2;
-                else if(obj_cnt == 3) obj_cnt = 9;
-                else if(obj_cnt == 10) obj_cnt = 11;
-
-                pocState = obj_cnt < 12 ? Pick : Ready;
-                pocSubState = 0;
-            }
-            ui->rbRePlace->setChecked(true);
             break;
         }
         default:
@@ -341,9 +289,9 @@ bool MainWindow::POCPickObj()
             case 3:
             {
                 double offset[6] = {0, 0, 0, 0, 0, 0};
-                offset[0] = -TPick_obj_offset_x*(obj_cnt%3);
-                offset[1] = -TPick_obj_offset_y*(obj_cnt/3);
-                movePose(offset, duration_fast, "rel");
+				offset[1] = -Pick_obj_offset_x*(obj_cnt%3);
+				offset[0] = Pick_obj_offset_y*(obj_cnt/3);
+				movePose(offset, duration_super_fast, "rel");
                 break;
             }
             case 4:
@@ -403,35 +351,42 @@ bool MainWindow::POCChuck1Obj()
             }
             case 3:
             {
-                double offset[6] = {0, WS_insert_y, -0.002, 0, 0, 0};
-                movePose(offset, duration_super_slow, "rel");
+				moveSetForceCtrlOn();
+				double offset[6] = {WS_insert_x, 0, 0, 0, 0, 0};
+				movePose(offset, duration_super_slow, "rel");
 
                 break;
             }
             case 4: // foot switch
             {
-                moveChuckClose();
+				moveChuckClose();
                 break;
             }
             case 5:
             {
-                moveGripperOff();
+				moveGripperOff();
                 break;
             }
             case 6:
             {
-                double offset[6] = {0, -WS_insert_y, 0, 0, 0, 0};
-                movePose(offset, duration_slow, "rel");
+				moveSetForceCtrlOff();
+				double offset[6] = {-WS_insert_x, 0, 0, 0, 0, 0};
+				movePose(offset, duration_slow, "rel");
                 break;
-            }
-            case 7:
-            {
-                moveJoint(JS_to_chuck1, duration_slow);
-                break;
-            }
+			}
+			case 7:
+			{
+				moveJoint(JS_to_chuck3, duration_slow);
+				break;
+			}
+			case 8:
+			{
+				moveJoint(JS_to_chuck1, duration_slow);
+				break;
+			}
             default:
             {
-                finish = true;
+				finish = true;
                 break;
             }
         }
@@ -461,32 +416,31 @@ bool MainWindow::POCDoorSwitch1()
             }
             case 2:
             {
-                double offset[6] = {WS_push_SW_x, 0, 0, 0, 0, 0};
+				double offset[6] = {0, WS_push_SW_y, 0, 0, 0, 0};
                 movePose(offset, duration_super_slow, "rel");
                 break;
             }
             case 3:
             {
-                double offset[6] = {-WS_push_SW_x, 0, 0, 0, 0, 0};
-                movePose(offset, duration_super_slow, "rel");
+				double offset[6] = {0, -WS_push_SW_y, 0, 0, 0, 0};
+				movePose(offset, duration_super_slow, "rel");
                 break;
             }
             case 4:
-            {
-                if(door_cnt%2 == 1)
-                    moveJoint(JS_to_door_SW2, duration_fast);
+			{
+				moveJoint(JS_to_door_SW2, duration_fast);
                 break;
             }
-            case 5:
-            {
-                if(door_cnt%2 == 0){
-                    moveDoorClose();
-                }
-                if(door_cnt%2 == 1){
-                    moveDoorOpen();
-                }
-                break;
-            }
+			case 5:
+			{
+				if(door_cnt%2 == 0){
+					moveDoorClose();
+				}
+				if(door_cnt%2 == 1){
+					moveDoorOpen();
+				}
+				break;
+			}
             default:
             {
                 door_cnt++;
@@ -508,41 +462,41 @@ bool MainWindow::POCLatheStart1()
 		switch(pocSubState){
 			case 0:
 			{
-				moveJoint(JS_over_MEM_SW, duration_fast);
+//				moveJoint(JS_over_MEM_SW, duration_fast);
 				break;
 			}
 			case 1:
 			{
 				double offset[6] = {WS_push_MEM_SW_x, 0, 0, 0, 0, 0};
-				movePose(offset, duration_super_slow, "rel");
+//				movePose(offset, duration_super_slow, "rel");
 				break;
 			}
 			case 2:
 			{
 				double offset[6] = {-WS_push_MEM_SW_x, 0, 0, 0, 0, 0};
-				movePose(offset, duration_super_slow, "rel");
+//				movePose(offset, duration_super_slow, "rel");
 				break;
 			}
 			case 3:
 			{
-				moveJoint(JS_over_start_SW, duration_fast);
+//				moveJoint(JS_over_start_SW, duration_fast);
 				break;
 			}
 			case 4:
 			{
 				double offset[6] = {WS_push_start_SW_x, 0, 0, 0, 0, 0};
-				movePose(offset, duration_super_slow, "rel");
+//				movePose(offset, duration_super_slow, "rel");
 				break;
 			}
 			case 5:
 			{
 				double offset[6] = {-WS_push_start_SW_x, 0, 0, 0, 0, 0};
-				movePose(offset, duration_super_slow, "rel");
+//				movePose(offset, duration_super_slow, "rel");
 				break;
 			}
 			case 6:
 			{
-				moveJoint(JS_ready2pick3, duration_fast);
+//				moveJoint(JS_ready2pick3, duration_fast);
 				break;
 			}
 			default:
@@ -565,39 +519,41 @@ bool MainWindow::POCLatheWait1()
 		switch(pocSubState){
 			case 0:
 			{
-				movePose(WS_lathwait, duration_slow, "abs", "base");
+//				movePose(WS_lathewait, duration_slow, "abs", "base");
+//				moveJoint(JS_to_chuck1, duration_fast);
 				break;
 			}
 			case 1:
 			{
-				tcpSocket->sendData('1');
+				moveJoint(JS_lathewait2, duration_slow);
+//				tcpSocket->sendData('1');
 				break;
 			}
 			case 2:
 			{
-				moveLath();
+				moveLathe();
 				break;
 			}
 			case 3:
 			{
-				moveJoint(JS_over_JOG_SW, duration_fast);
+//				moveJoint(JS_over_JOG_SW, duration_fast);
 				break;
 			}
 			case 4:
 			{
-				double offset[6] = {WS_push_JOG_SW_x, 0, 0, 0, 0, 0};
-				movePose(offset, duration_super_slow, "rel");
+				double offset[6] = {0, WS_push_JOG_SW_y, 0, 0, 0, 0};
+//				movePose(offset, duration_super_slow, "rel");
 				break;
 			}
 			case 5:
 			{
-				double offset[6] = {-WS_push_JOG_SW_x, 0, 0, 0, 0, 0};
-				movePose(offset, duration_super_slow, "rel");
+				double offset[6] = {0, -WS_push_JOG_SW_y, 0, 0, 0, 0};
+//				movePose(offset, duration_super_slow, "rel");
 				break;
 			}
 			case 6:
 			{
-				moveJoint(JS_ready2pick3, duration_fast);
+				moveJoint(JS_to_door_SW2, duration_fast);
 				break;
 			}
 			default:
@@ -630,7 +586,7 @@ bool MainWindow::POCUnChuck1Obj()
             }
             case 2:
             {
-                double offset[6] = {0, WS_remove_y, 0, 0, 0, 0};
+				double offset[6] = {WS_remove_x, 0, 0, 0, 0, 0};
                 movePose(offset, duration_super_slow, "rel");
                 break;
             }
@@ -641,20 +597,20 @@ bool MainWindow::POCUnChuck1Obj()
             }
             case 4: // foot switch
             {
-                moveChuckOpen();
+				moveChuckOpen();
                 break;
             }
             case 5:
             {
-                double offset[6] = {0, -WS_remove_y, 0, 0, 0, 0};
+				double offset[6] = {-WS_remove_x, 0, 0, 0, 0, 0};
                 movePose(offset, duration_super_slow, "rel");
                 break;
-            }
-            case 6:
-            {
-                moveJoint(JS_to_unchuck1, duration_fast);
-                break;
-            }
+			}
+			case 6:
+			{
+				moveJoint(JS_to_unchuck1, duration_fast);
+				break;
+			}
             default:
             {
                 finish = true;
@@ -675,257 +631,36 @@ bool MainWindow::POCPlaceObj()
         switch(pocSubState){
             case 0:
             {
-                moveJoint(JS_withdraw_pick, duration_fast);
+//                moveJoint(JS_withdraw_pick, duration_fast);
                 break;
             }
             case 1:
             {
-                moveJoint(JS_over_place, duration_fast);
+				moveJoint(JS_over_place, duration_fast);
                 break;
             }
-            case 2:
+			case 2:
+			{
+				double offset[6] = {0, 0, 0, 0, 0, 0};
+				offset[1] = -Place_obj_offset_x*(obj_cnt%3);
+				offset[0] = Place_obj_offset_y*(obj_cnt/3);
+				movePose(offset, duration_fast, "rel");
+				break;
+			}
+			case 3:
             {
                 double offset[6] = {0, 0, WS_place_z, 0, 0, 0};
                 movePose(offset, duration_super_slow, "rel");
                 break;
             }
-            case 3:
+			case 4:
             {
                 moveGripperOff();
                 break;
             }
-            case 4:
+			case 5:
             {
                 double offset[6] = {0, 0, -WS_place_z, 0, 0, 0};
-                movePose(offset, duration_slow, "rel");
-                break;
-            }
-            default:
-            {
-                finish = true;
-                break;
-            }
-        }
-        pocSubState++;
-    }
-
-    return finish;
-}
-
-bool MainWindow::POCRePickObj()
-{
-    bool finish = false;
-
-    if(!cmd_flag){
-        switch(pocSubState){
-            case 0:
-            {
-                moveJoint(JS_ready2repick1, duration_fast);
-                break;
-            }
-            case 1:
-            {
-                moveJoint(JS_ready2repick3, duration_fast);
-                break;
-            }
-            case 2:
-            {
-                moveGripperOff();
-                break;
-            }
-            case 3:
-            {
-                double offset[6] = {0, 0, WS_repick_z, 0, 0, 0};
-                movePose(offset, duration_super_slow, "rel");
-                break;
-            }
-            case 4:
-            {
-                moveGripperOn();
-                break;
-            }
-            case 5:
-            {
-                double offset[6] = {0, 0, -WS_repick_z, 0, 0, 0};
-                movePose(offset, duration_slow, "rel");
-                break;
-            }
-            case 6:
-            {
-                moveJoint(JS_ready2pick2, duration_fast);
-                break;
-            }
-            default:
-            {
-                finish = true;
-                break;
-            }
-        }
-        pocSubState++;
-    }
-
-    return finish;
-}
-
-bool MainWindow::POCChuck2Obj()
-{
-    bool finish = false;
-
-    if(!cmd_flag){
-        switch(pocSubState){
-            case 0:
-            {
-                moveJoint(JS_to_rechuck1, duration_fast);
-                break;
-            }
-            case 1:
-            {
-//                movePose(WS_to_chuck3, duration_slow);
-                break;
-            }
-            case 2:
-            {
-                moveJoint(JS_to_rechuck3, duration_slow);
-                break;
-            }
-            case 3:
-            {
-                double offset[6] = {0, WS_reinsert_y, -0.002, 0, 0, 0};
-                movePose(offset, duration_super_slow, "rel");
-
-                break;
-            }
-            case 4: // foot switch
-            {
-                moveChuckClose();
-                break;
-            }
-            case 5:
-            {
-                moveGripperOff();
-                break;
-            }
-            case 6:
-            {
-                double offset[6] = {0, -WS_reinsert_y, 0, 0, 0, 0};
-                movePose(offset, duration_slow, "rel");
-                break;
-            }
-            case 7:
-            {
-                moveJoint(JS_to_rechuck1, duration_slow);
-                break;
-            }
-            default:
-            {
-                finish = true;
-                break;
-            }
-        }
-        pocSubState++;
-    }
-
-    return finish;
-}
-
-bool MainWindow::POCUnChuck2Obj()
-{
-    bool finish = false;
-
-    if(!cmd_flag){
-        switch(pocSubState){
-            case 0:
-            {
-                moveJoint(JS_to_reunchuck1, duration_fast);
-                break;
-            }
-            case 1:
-            {
-//                movePose(WS_to_chuck3, duration_slow);
-                break;
-            }
-            case 2:
-            {
-                moveJoint(JS_to_reunchuck3, duration_slow);
-                break;
-            }
-            case 3:
-            {
-                double offset[6] = {0, WS_reremove_y, 0, 0, 0};
-                movePose(offset, duration_super_slow, "rel");
-
-                break;
-            }
-            case 4:
-            {
-                moveGripperOn();
-                break;
-            }
-            case 5: // foot switch
-            {
-                moveChuckOpen();
-                break;
-            }
-            case 6:
-            {
-                double offset[6] = {0, -WS_reremove_y, 0, 0, 0};
-                movePose(offset, duration_super_slow, "rel");
-                break;
-            }
-            case 7:
-            {
-                moveJoint(JS_to_reunchuck1, duration_slow);
-                break;
-            }
-            default:
-            {
-                finish = true;
-                break;
-            }
-        }
-        pocSubState++;
-    }
-
-    return finish;
-}
-
-bool MainWindow::POCRePlaceObj(){
-    bool finish = false;
-
-    if(!cmd_flag){
-        switch(pocSubState){
-            case 0:
-            {
-                moveJoint(JS_ready2pick2, duration_fast);
-                break;
-            }
-            case 1:
-            {
-                moveJoint(JS_over_replace, duration_fast);
-                break;
-            }
-            case 2:
-            {
-                double offset[6] = {0, 0, 0, 0, 0, 0};
-                offset[0] = -Place_obj_offset_x*(obj_cnt%3);
-                offset[1] = -Place_obj_offset_y*(obj_cnt/3);
-                movePose(offset, duration_fast, "rel");
-                break;
-            }
-            case 3:
-            {
-                double offset[6] = {0, 0, WS_replace_z, 0, 0, 0};
-                movePose(offset, duration_super_slow, "rel");
-                break;
-            }
-            case 4:
-            {
-                moveGripperOff();
-                break;
-            }
-            case 5:
-            {
-                double offset[6] = {0, 0, -WS_replace_z, 0, 0, 0};
                 movePose(offset, duration_slow, "rel");
                 break;
             }
@@ -944,98 +679,35 @@ bool MainWindow::POCRePlaceObj(){
 void MainWindow::moveJoint(double cmd[], double vel)
 {
     if(!cmd_flag){
-        SetVelocity(vel);
-        usleep(10000);
-        movej(cmd);
-        cmd_type = MoveJ;
-        memcpy(cmd_value, cmd, sizeof(double)*6);
-        pthread_create(&move_wait_thread, NULL, move_wait_func, this);
+		float cmd_f[6];
+		for(unsigned int i = 0; i < 6; i++){
+			cmd_f[i] = (float)cmd[i];
+		}
+		Drfl.amovej(cmd_f, (float)vel, 30);
+		cmd_type = MoveJ;
+		memcpy(cmd_value, cmd, sizeof(double)*6);
+		pthread_create(&move_wait_thread, NULL, move_wait_func, this);
     }
 }
 
 void MainWindow::movePose(double *cmd, double vel, std::string opt, std::string coord)
 {
     if(!cmd_flag){
-        SetVelocity(vel);
-        usleep(10000);
-
-        if(coord == "tcp"){
-            if(opt == "rel"){
-//                for(unsigned int i = 0; i < 3; i++){
-//                    cmd[i] += pos[i];
-//                }
-                double cmd_mat[16] = {0,};
-//                for(unsigned int i = 0; i < 3; i++){
-//                    for(unsigned int j = 0; j < 3; j++){
-//                        cmd_mat[i*4 + j] = mat[i*3 + j];
-//                    }
-//                }
-
-                cmd_mat[0] = 1; cmd_mat[1] = 0; cmd_mat[2] = 0;
-                cmd_mat[4] = 0; cmd_mat[5] = 1; cmd_mat[6] = 0;
-                cmd_mat[8] = 0; cmd_mat[9] = 0; cmd_mat[10] = 1;
-
-                cmd_mat[0*4 + 3] = cmd[0];
-                cmd_mat[1*4 + 3] = cmd[1];
-                cmd_mat[2*4 + 3] = cmd[2];
-                cmd_mat[15] = 1;
-                movel(tcp, cmd_mat);
-                cmd_type = MoveL;
-                memcpy(cmd_value, cmd, sizeof(double)*6);
-                pthread_create(&move_wait_thread, NULL, move_wait_func, this);
-            }
-        }
-
-        else{
-            if(opt == "abs"){
-                double cmd_mat[16] = {0,};
-//                for(unsigned int i = 0; i < 3; i++){
-//                    for(unsigned int j = 0; j < 3; j++){
-//                        cmd_mat[i*4 + j] = cmd[3 + i*3 + j];
-//                    }
-//                }
-
-//                cmd_mat[0] = cmd[3]; cmd_mat[1] = cmd[4]; cmd_mat[2] = cmd[5];
-//                cmd_mat[4] = cmd[6]; cmd_mat[5] = cmd[7]; cmd_mat[6] = cmd[8];
-//                cmd_mat[8] = cmd[9]; cmd_mat[9] = cmd[10]; cmd_mat[10] = cmd[11];
-//                cmd_mat[0*4 + 3] = cmd[0];
-//                cmd_mat[1*4 + 3] = cmd[1];
-//                cmd_mat[2*4 + 3] = cmd[2];
-//                cmd_mat[15] = 1;
-				memcpy(cmd_mat, cmd, sizeof(double)*16);
-                movel(base, cmd_mat);
-                cmd_type = MoveL;
-                memcpy(cmd_value, cmd, sizeof(double)*6);
-                pthread_create(&move_wait_thread, NULL, move_wait_func, this);
-            }
-
-            if(opt == "rel"){
-                for(unsigned int i = 0; i < 3; i++){
-                    cmd[i] += pos[i];
-                }
-                double cmd_mat[16] = {0,};
-                for(unsigned int i = 0; i < 3; i++){
-                    for(unsigned int j = 0; j < 3; j++){
-                        cmd_mat[i*4 + j] = mat[i*3 + j];
-                    }
-                }
-                cmd_mat[0*4 + 3] = cmd[0];
-                cmd_mat[1*4 + 3] = cmd[1];
-                cmd_mat[2*4 + 3] = cmd[2];
-                cmd_mat[15] = 1;
-                movel(base, cmd_mat);
-                cmd_type = MoveL;
-                memcpy(cmd_value, cmd, sizeof(double)*6);
-                pthread_create(&move_wait_thread, NULL, move_wait_func, this);
-            }
-        }
-    }
+		float vel1[2] = {(float)vel, (float)vel};
+		float acc1[2] = {500, 500};
+		float cmd_f[6];
+		for(unsigned int i = 0; i < 6; i++){
+			cmd_f[i] = (float)cmd[i];
+		}
+		Drfl.amovel(cmd_f, vel1, acc1, 0.f, MOVE_MODE_RELATIVE, MOVE_REFERENCE_BASE);
+		cmd_type = MoveL;
+		pthread_create(&move_wait_thread, NULL, move_wait_func, this);
+	}
 }
 
 void MainWindow::moveGripperOn()
 {
-    if(!cmd_flag){
-//        gripper->gripper_grip(false);
+	if(!cmd_flag){
         cmd_type = GripOn;
         usleep(10000);
         pthread_create(&move_wait_thread, NULL, move_wait_func, this);
@@ -1044,19 +716,8 @@ void MainWindow::moveGripperOn()
 
 void MainWindow::moveGripperOff()
 {
-    if(!cmd_flag){
-//        gripper->gripper_release(false);
+	if(!cmd_flag){
         cmd_type = GripOff;
-        usleep(10000);
-        pthread_create(&move_wait_thread, NULL, move_wait_func, this);
-    }
-}
-
-void MainWindow::moveGripperCustom()
-{
-    if(!cmd_flag){
-//        gripper->gripper_release(false);
-        cmd_type = GripCustom;
         usleep(10000);
         pthread_create(&move_wait_thread, NULL, move_wait_func, this);
     }
@@ -1064,80 +725,109 @@ void MainWindow::moveGripperCustom()
 
 void MainWindow::moveChuckOpen()
 {
-    if(!cmd_flag){
-        ControlBoxDigitalOut(0);
-        cmd_type = ChuckOpen;
-        usleep(10000);
-        pthread_create(&move_wait_thread, NULL, move_wait_func, this);
-    }
-}
-
-void MainWindow::moveChuckClose()
-{
-    if(!cmd_flag){
-        ControlBoxDigitalOut(0);
-        cmd_type = ChuckClose;
-        usleep(10000);
-        pthread_create(&move_wait_thread, NULL, move_wait_func, this);
-    }
-}
-
-void MainWindow::moveDoorOpen()
-{
-    if(!cmd_flag){
-        cmd_type = DoorOpen;
-        usleep(10000);
-        pthread_create(&move_wait_thread, NULL, move_wait_func, this);
-    }
-}
-
-void MainWindow::moveDoorClose()
-{
-    if(!cmd_flag){
-        cmd_type = DoorClose;
-        usleep(10000);
-        pthread_create(&move_wait_thread, NULL, move_wait_func, this);
-    }
-}
-
-void MainWindow::moveLath(){
 	if(!cmd_flag){
-		cmd_type = LathWait;
+		Drfl.set_digital_output(GPIO_CTRLBOX_DIGITAL_INDEX_1, true);
+		cmd_type = ChuckOpen;
 		usleep(10000);
 		pthread_create(&move_wait_thread, NULL, move_wait_func, this);
 	}
 }
 
+void MainWindow::moveChuckClose()
+{
+	if(!cmd_flag){
+		Drfl.set_digital_output(GPIO_CTRLBOX_DIGITAL_INDEX_1, true);
+		cmd_type = ChuckClose;
+		usleep(10000);
+		pthread_create(&move_wait_thread, NULL, move_wait_func, this);
+	}
+}
+
+void MainWindow::moveDoorOpen()
+{
+	if(!cmd_flag){
+		cmd_type = DoorOpen;
+		usleep(10000);
+		pthread_create(&move_wait_thread, NULL, move_wait_func, this);
+	}
+}
+
+void MainWindow::moveDoorClose()
+{
+	if(!cmd_flag){
+		cmd_type = DoorClose;
+		usleep(10000);
+		pthread_create(&move_wait_thread, NULL, move_wait_func, this);
+	}
+}
+
+void MainWindow::moveLathe()
+{
+	usleep(3000000);
+}
+
+void MainWindow::moveSetForceCtrlOn()
+{
+	float stx[6] = {3000, 3000, 3000, 200, 200, 200};
+//	float des_force[6] = {-50, 0, 0, 0, 0, 0};
+//	unsigned char dir_force[6] = {1, 0, 0, 0, 0, 0};
+
+	Drfl.task_compliance_ctrl(stx);
+//	Drfl.set_desired_force(des_force, dir_force);
+}
+
+void MainWindow::moveSetForceCtrlOff()
+{
+//	Drfl.release_force();
+	Drfl.release_compliance_ctrl();
+	usleep(50000);
+}
+
 void MainWindow::btnRobotConnectClicked()
 {
     if(ui->btnRobotConnect->text().compare("Connect")){
-        RobotDisconnect();
+//        RobotDisconnect();
+
+		Drfl.close_connection();
 
         ui->btnRobotConnect->setText("Connect");
 
-        robot_connected = false;
-    }
+		robot_connected = false;
+	}
     else{
-        SetRobotConf(UR10, ui->txtRobotIP->text().toStdString().c_str(), ui->txtRobotPORT->text().toInt());
-        RobotConnect();
+//        SetRobotConf(UR10, ui->txtRobotIP->text().toStdString().c_str(), ui->txtRobotPORT->text().toInt());
+//        RobotConnect();
 
-        usleep(10000);
+		// ???? ????
+		assert(Drfl.open_connection(ui->txtRobotIP->text().toStdString().c_str(), ui->txtRobotPORT->text().toInt()));
+
+		// ???? ???? ???
+		SYSTEM_VERSION tSysVerion = {
+			'\0',
+		};
+		Drfl.get_system_version(&tSysVerion);
+		// ?????? ?????? ???? ????
+		Drfl.setup_monitoring_version(1);
+		Drfl.set_robot_control(CONTROL_SERVO_ON);
+		cout << "System version: " << tSysVerion._szController << endl;
+		cout << "Library version: " << Drfl.get_library_version() << endl;
+
+		while ((Drfl.get_robot_state() != STATE_STANDBY) || !g_bHasControlAuthority)
+			// Sleep(1000);
+			this_thread::sleep_for(std::chrono::milliseconds(1000));
+
+		assert(Drfl.set_robot_mode(ROBOT_MODE_AUTONOMOUS));
+		assert(Drfl.set_robot_system(ROBOT_SYSTEM_REAL));
 
         ui->btnRobotConnect->setText("Disconnect");
 
         robot_connected = true;
-
-//        usleep(1000000);
-
-//        double q_goal[6] = {M_PI_2, -M_PI_2, M_PI_2, -M_PI_2, -M_PI_2, 0};
-//        movej(q_goal);
     }
 }
 
 void MainWindow::btnGripperConnectClicked()
 {
     if(ui->btnGripperConnect->text().compare("Connect")){
-//        gripperUpdateTimer->stop();
         gripper->disconnect();
 
         ui->btnGripperConnect->setText("Connect");
@@ -1146,8 +836,6 @@ void MainWindow::btnGripperConnectClicked()
     }
     else{
         gripper->connect(ui->txtGripperIP->text().toStdString(), ui->txtGripperPORT->text().toInt());
-
-//        gripperUpdateTimer->start();
 
         usleep(10000);
 
@@ -1162,9 +850,6 @@ void MainWindow::btnInitClicked()
     mainState = Init;
     door_cnt = 0;
 	obj_cnt = 0;
-
-//	robot_connected = true;
-//	gripper_connected = true;
 }
 
 void MainWindow::btnRunClicked()
@@ -1205,44 +890,9 @@ void MainWindow::btnDoorSwitchClicked()
 
 void MainWindow::btnPlaceObjClicked()
 {
-    mainState = Start;
-    pocState = Place;
-    door_cnt = 0;
-}
-
-void MainWindow::btnRePickObjClicked()
-{
-    mainState = Start;
-    pocState = RePick;
-    door_cnt = 0;
-}
-
-void MainWindow::btnChuckObj2Clicked()
-{
-    mainState = Start;
-    pocState = Chuck2;
-    door_cnt = 0;
-}
-
-void MainWindow::btnUnChuckObj2Clicked()
-{
-    mainState = Start;
-    pocState = UnChuck2;
-    door_cnt = 0;
-}
-
-void MainWindow::btnDoorSwitch2Clicked()
-{
-    mainState = Start;
-    pocState = Door2;
-    door_cnt = 0;
-}
-
-void MainWindow::btnRePlaceObjClicked()
-{
-    mainState = Start;
-    pocState = RePlace;
-    door_cnt = 0;
+	mainState = Start;
+	pocState = Place;
+	door_cnt = 0;
 }
 
 void MainWindow::btnTestClicked()
@@ -1252,14 +902,14 @@ void MainWindow::btnTestClicked()
 	obj_cnt = 0;
 }
 
-void MainWindow::btnLathStartClicked()
+void MainWindow::btnLatheStartClicked()
 {
 	mainState = Start;
-	pocState = LathStart1;
+	pocState = LatheStart1;
 	obj_cnt = 0;
 }
 
-void MainWindow::btnLathWaitClicked()
+void MainWindow::btnLatheWaitClicked()
 {
 	mainState = Start;
 	pocState = LatheWait1;
@@ -1276,18 +926,18 @@ void MainWindow::btnPrintClicked()
 {
     for(unsigned int i = 0; i < 6; i++){
 //        printf("%f\t", robotInfor.jnt[i]);
-        std::cout << robotInfor.jnt[i] << ", ";
+		std::cout << jnt[i] << ", ";
     }
 //    printf("\n");
     std::cout << std::endl;
-    for(unsigned int i = 0; i < 3; i++){
+	for(unsigned int i = 0; i < 6; i++){
 //        printf("%f\t", robotInfor.mat[i]);
-        std::cout << robotInfor.mat[4*i + 3] << ", ";
+		std::cout << pose[i] << ", ";
     }
     std::cout << std::endl;
     for(unsigned int i = 0; i < 3; i++){
         for(unsigned int j = 0; j < 3; j++){
-            std::cout << robotInfor.mat[i*4 + j] << ",";
+			std::cout << mat[i*4 + j] << ",";
         }
         std::cout << std::endl;
     }
@@ -1313,62 +963,131 @@ void MainWindow::btnGripperReleaseClicked()
 
 void MainWindow::robotStateUpdate()
 {
-    robotInfor = RobotInfo();
+	state = Drfl.check_motion();
+	if(state == 0) state = 1;
+	if(state == 2) {
+		robot_moving = true;
+	}
+//	else{
+//		robot_moving = false;
+//	}
+	memcpy(jnt, Drfl.get_current_posj()->_fPosition, sizeof(float)*6);
+	memcpy(pose, Drfl.get_current_posx()->_fTargetPos, sizeof(float)*6);
+	memset(mat, 0, sizeof(float)*16);
+	for(int i = 0; i < 3; i++){
+//		for(int j = 0; j < 3; j++){
+//			mat[i*4 + j] = Drfl.get_current_rotm()[i][j];
+//		}
+		memcpy(mat + i*4, Drfl.get_current_rotm()[i], sizeof(float)*3);
+		mat[i*4 + 3] = pose[i];
+	}
+	mat[15] = 1;
 
-    state = robotInfor.state;
-    ui->txtRobotStatus->setText(QString::number(state));
+//	for(int i = 0; i < 4; i++){
+//		for(int j = 0; j < 4; j++){
+//			std::cout << mat[i*4 + j] << ", ";
+//		}
+//		std::cout << std::endl;
+//	}
+//	std::cout << std::endl;
 
-    if(state == 2.0) {
-        moving = true;
-    }
-    else{
-        moving = false;
-    }
+	ui->txtRobotState->setText(QString::number(state));
 
-    for(unsigned int i = 0; i < 6; i++){
-        txtJoint[i]->setText(QString::number(robotInfor.jnt[i]));
-    }
-    for(unsigned int i = 0; i < 3; i++){
-        txtPose[i]->setText(QString::number(robotInfor.mat[i*4 + 3]));
-    }
+	for(unsigned int i = 0; i < 6; i++){
+		txtJoint[i]->setText(QString::number(jnt[i]));
+	}
+	for(unsigned int i = 0; i < 6; i++){
+		txtPose[i]->setText(QString::number(pose[i]));
+	}
 
-    for(unsigned int i = 0; i < 6; i++){
-        jnt[i] = robotInfor.jnt[i];
-    }
+//	GPIO_CTRLBOX_DIGITAL_INDEX_1= 0,
+//    GPIO_CTRLBOX_DIGITAL_INDEX_2,
+//    GPIO_CTRLBOX_DIGITAL_INDEX_3,
+//    GPIO_CTRLBOX_DIGITAL_INDEX_4,
 
-    for(unsigned int i = 0; i < 3; i++){
-        for(unsigned int j = 0; j < 3; j++){
-            mat[i*3 + j] = robotInfor.mat[i*4 + j];
-        }
-    }
-    for(unsigned int i = 0; i < 3; i++){
-        pos[i] = robotInfor.mat[i*4 + 3];
-    }
+	door_close = Drfl.get_digital_input(GPIO_CTRLBOX_DIGITAL_INDEX_1);
+	chuck_close = Drfl.get_digital_input(GPIO_CTRLBOX_DIGITAL_INDEX_3);
+	chuck_open = Drfl.get_digital_input(GPIO_CTRLBOX_DIGITAL_INDEX_4);
 
-//    printf("\n%f, %f, %f, %f\n", robotInfor.mat[0], robotInfor.mat[1], robotInfor.mat[2], robotInfor.mat[3]);
-//    printf("%f, %f, %f, %f\n", robotInfor.mat[4], robotInfor.mat[5], robotInfor.mat[6], robotInfor.mat[7]);
-//    printf("%f, %f, %f, %f\n", robotInfor.mat[8], robotInfor.mat[9], robotInfor.mat[10], robotInfor.mat[11]);
-//    printf("%f, %f, %f, %f\n\n", robotInfor.mat[12], robotInfor.mat[13], robotInfor.mat[14], robotInfor.mat[15]);
+	ui->txtStateDoor->setText(door_close ? "Close" : "Open");
 
-    double ang_x, ang_y, ang_z;
-    Conf.InverseRot(mat, &ang_x,&ang_y,&ang_z);
+	if(!chuck_open && !chuck_close){
+		chuck_moving = true;
+	}
+	else{
+		chuck_moving = false;
+	}
 
-    txtPose[3]->setText(QString::number(ang_x));
-    txtPose[4]->setText(QString::number(ang_y));
-    txtPose[5]->setText(QString::number(ang_z));
+	if(chuck_open && !chuck_close)
+		ui->txtStateChuck->setText("Open");
+	if(!chuck_open && chuck_close)
+		ui->txtStateChuck->setText("Close");
+	if(!chuck_open && !chuck_close)
+		ui->txtStateChuck->setText("Open");
 
-    DI = (int)ControlBoxDigitalIn();
-//    printf("Digital Input(0 ~ 7)  : %d %d %d %d %d %d %d %d\n", DI&0x01, DI&0x02, DI&0x04, DI&0x08, DI&0x10, DI&0x20, DI&0x40, DI&0x80);
-    door_close = DI&0x10;
-    chuck_open = DI&0x02;
-    chuck_close = DI&0x01;
 
-    if(!chuck_open && !chuck_close){
-        chuck_moving = true;
-    }
-    else{
-        chuck_moving = false;
-    }
+//	LPROBOT_FORCE force = Drfl.get_tool_force();
+//	for(int i = 0; i < 3; i++){
+//		std::cout << force->_fForce[i] << ", ";
+//	}
+//	std::cout << std::endl;
+
+//    robotInfor = RobotInfo();
+
+//    state = robotInfor.state;
+//    ui->txtRobotStatus->setText(QString::number(state));
+
+//    if(state == 2.0) {
+//        moving = true;
+//    }
+//    else{
+//        moving = false;
+//    }
+
+//    for(unsigned int i = 0; i < 6; i++){
+//        txtJoint[i]->setText(QString::number(robotInfor.jnt[i]));
+//    }
+//    for(unsigned int i = 0; i < 3; i++){
+//        txtPose[i]->setText(QString::number(robotInfor.mat[i*4 + 3]));
+//    }
+
+//    for(unsigned int i = 0; i < 6; i++){
+//        jnt[i] = robotInfor.jnt[i];
+//    }
+
+//    for(unsigned int i = 0; i < 3; i++){
+//        for(unsigned int j = 0; j < 3; j++){
+//            mat[i*3 + j] = robotInfor.mat[i*4 + j];
+//        }
+//    }
+//    for(unsigned int i = 0; i < 3; i++){
+//        pos[i] = robotInfor.mat[i*4 + 3];
+//    }
+
+////    printf("\n%f, %f, %f, %f\n", robotInfor.mat[0], robotInfor.mat[1], robotInfor.mat[2], robotInfor.mat[3]);
+////    printf("%f, %f, %f, %f\n", robotInfor.mat[4], robotInfor.mat[5], robotInfor.mat[6], robotInfor.mat[7]);
+////    printf("%f, %f, %f, %f\n", robotInfor.mat[8], robotInfor.mat[9], robotInfor.mat[10], robotInfor.mat[11]);
+////    printf("%f, %f, %f, %f\n\n", robotInfor.mat[12], robotInfor.mat[13], robotInfor.mat[14], robotInfor.mat[15]);
+
+//    double ang_x, ang_y, ang_z;
+//    Conf.InverseRot(mat, &ang_x,&ang_y,&ang_z);
+
+//    txtPose[3]->setText(QString::number(ang_x));
+//    txtPose[4]->setText(QString::number(ang_y));
+//    txtPose[5]->setText(QString::number(ang_z));
+
+//    DI = (int)ControlBoxDigitalIn();
+////    printf("Digital Input(0 ~ 7)  : %d %d %d %d %d %d %d %d\n", DI&0x01, DI&0x02, DI&0x04, DI&0x08, DI&0x10, DI&0x20, DI&0x40, DI&0x80);
+//    door_close = DI&0x10;
+//    chuck_open = DI&0x02;
+//    chuck_close = DI&0x01;
+
+//    if(!chuck_open && !chuck_close){
+//        chuck_moving = true;
+//    }
+//    else{
+//        chuck_moving = false;
+//    }
 
 //    ControlBoxDigitalOut(DO);
 
@@ -1391,12 +1110,7 @@ void MainWindow::gripperStateUpdate()
     ui->txtWorkPosition->setText(QString::number(gripper_write_reg[7]));
     ui->txtCurrentPosition->setText(QString::number(gripper_read_reg[2]));
 
-    ui->txtErrorNum->setText(QString::number(((gripper_read_reg[0]&0x0004) == 0x0004)) + "(" + QString::number(gripper_read_reg[1], 16) + ")");
-//    ui->txtErrorNum->setText(QString::number(((gripper_read_reg[0]&0x0004) == 0x0004)) + "(" + QString::number((gripper_read_reg[0]&0x0008) == 0x0008) + ")");
-
-//    if(((gripper_read_reg[0]&0x0004) == 0x0004)){
-//        gripper->gripper_init();
-//    }
+	ui->txtErrorNum->setText(QString::number(((gripper_read_reg[0]&0x0004) == 0x0004)) + "(" + QString::number(gripper_read_reg[1], 16) + ")");
 }
 
 void MainWindow::visionStateUpdate(){
@@ -1422,17 +1136,21 @@ void* MainWindow::move_wait_func(void *arg){
                     err = abs(pThis->cmd_value[i] - pThis->jnt[i]);
                     err_max = err > err_max ? err : err_max;
                 }
-                if(pThis->moving && pThis->state == 1.0) {
+				if(pThis->robot_moving && pThis->state == 1) {
                     std::cout << "move finish" << std::endl;
+					pThis->robot_moving = false;
                     run = false;
+					break;
                 }
-                if(cnt >= 300 && pThis->state == 1.0) {
+				if(cnt >= 300 && pThis->state == 1) {
                     std::cout << "move wait timeout " << cnt << std::endl;
                     run = false;
+					break;
                 }
                 if(err_max < 1e-3) {
                     std::cout << "goal reach" << std::endl;
                     run = false;
+					break;
                 }
 //                std::cout << err_max << std::endl;
                 cnt++;
@@ -1441,36 +1159,38 @@ void* MainWindow::move_wait_func(void *arg){
             }
             case MoveL:
             {
-                double err_max = abs(pThis->cmd_value[0] - pThis->pos[0]);
-                double err = 0;
-                for(unsigned int i = 1; i < 3; i++){
-                    err = abs(pThis->cmd_value[i] - pThis->pos[i]);
-                    err_max = err > err_max ? err : err_max;
-                }
+//				double err_max = abs(pThis->cmd_value[0] - pThis->pose[0]);
+//                double err = 0;
+//                for(unsigned int i = 1; i < 3; i++){
+//					err = abs(pThis->cmd_value[i] - pThis->pose[i]);
+//                    err_max = err > err_max ? err : err_max;
+//                }
                 //        std::cout << err_max << std::endl;
 //                if(pThis->state == 2.0) {
 //                    moving = true;
-//                    pThis->moving = true;
+//                    pThis->robot_moving = true;
 //                }
-                if(pThis->moving && pThis->state == 1.0) {
+				if(pThis->robot_moving && pThis->state == 1) {
                     std::cout << "move finish" << std::endl;
                     run = false;
+					break;
                 }
-                if(cnt >= 300 && pThis->state == 1.0) {
+				if(cnt >= 300 && pThis->state == 1) {
                     std::cout << "move wait timeout " << cnt << std::endl;
                     run = false;
+					break;
                 }
-                if(err_max < 1e-3) {
-                    std::cout << "goal reach" << std::endl;
-                    run = false;
-                }
+//                if(err_max < 1e-3) {
+//                    std::cout << "goal reach" << std::endl;
+//                    run = false;
+//                }
                 cnt++;
                 break;
             }
             case GripOn:
             {
                 pThis->gripper->gripper_grip();
-                pThis->moving = false;
+				pThis->robot_moving = false;
                 run = false;
                 pThis->cmd_type = None;
                 break;
@@ -1478,7 +1198,7 @@ void* MainWindow::move_wait_func(void *arg){
             case GripOff:
             {
                 pThis->gripper->gripper_release();
-                pThis->moving = false;
+				pThis->robot_moving = false;
                 run = false;
                 pThis->cmd_type = None;
                 break;
@@ -1486,38 +1206,33 @@ void* MainWindow::move_wait_func(void *arg){
             case GripCustom:
             {
                 pThis->gripper->gripper_custom(1100, 50, 50);
-                pThis->moving = false;
+				pThis->robot_moving = false;
                 run = false;
                 pThis->cmd_type = None;
                 break;
             }
             case ChuckOpen:
-            {
-                pThis->DO = 0x01;
-                if(!pThis->chuck_moving && !pThis->chuck_open && pThis->chuck_close){
-                    ControlBoxDigitalOut(pThis->DO);
-                }
-                if(!pThis->chuck_moving && pThis->chuck_open && !pThis->chuck_close){
-                    run = false;
-                    pThis->cmd_type = None;
-                    pThis->DO = 0x00;
-                    ControlBoxDigitalOut(pThis->DO);
-                }
+			{
+				if(!pThis->chuck_moving && !pThis->chuck_open && pThis->chuck_close){
+					Drfl.set_digital_output(GPIO_CTRLBOX_DIGITAL_INDEX_1, true);
+				}
+				if(!pThis->chuck_moving && pThis->chuck_open && !pThis->chuck_close){
+					run = false;
+					pThis->cmd_type = None;
+					Drfl.set_digital_output(GPIO_CTRLBOX_DIGITAL_INDEX_1, false);
+				}
                 break;
             }
             case ChuckClose:
             {
-                pThis->DO = 0x01;
-                if(!pThis->chuck_moving && pThis->chuck_open && !pThis->chuck_close){
-                    ControlBoxDigitalOut(pThis->DO);
-                }
-                if(!pThis->chuck_moving && !pThis->chuck_open && pThis->chuck_close)
-                {
-                    run = false;
-                    pThis->cmd_type = None;
-                    pThis->DO = 0x00;
-                    ControlBoxDigitalOut(pThis->DO);
-                }
+				if(!pThis->chuck_moving && pThis->chuck_open && !pThis->chuck_close){
+					Drfl.set_digital_output(GPIO_CTRLBOX_DIGITAL_INDEX_1, true);
+				}
+				if(!pThis->chuck_moving && !pThis->chuck_open && pThis->chuck_close){
+					run = false;
+					pThis->cmd_type = None;
+					Drfl.set_digital_output(GPIO_CTRLBOX_DIGITAL_INDEX_1, false);
+				}
                 break;
             }
             case DoorOpen:
@@ -1534,7 +1249,7 @@ void* MainWindow::move_wait_func(void *arg){
                 }
                 break;
             }
-			case LathWait:
+			case LatheWait:
 			{
 				if(pThis->tcpSocket->recvData()){
 					run = false;
@@ -1552,7 +1267,7 @@ void* MainWindow::move_wait_func(void *arg){
 
     pThis->mainState = Wait;
     pThis->move_complete = true;
-    pThis->moving = false;
+	pThis->robot_moving = false;
     pThis->cmd_flag = false;
 
     std::cout << "\nfinish move wait thread\n" << std::endl;
