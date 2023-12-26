@@ -352,7 +352,7 @@ bool MainWindow::POCChuck1Obj()
             case 3:
             {
 				moveSetForceCtrlOn();
-				double offset[6] = {WS_insert_x, 0, 0, 0, 0, 0};
+				double offset[6] = {WS_insert_x, -3, 0, 0, 0, 0};
 				movePose(offset, duration_super_slow, "rel");
 
                 break;
@@ -370,8 +370,8 @@ bool MainWindow::POCChuck1Obj()
             case 6:
             {
 				moveSetForceCtrlOff();
-				double offset[6] = {-WS_insert_x, 0, 0, 0, 0, 0};
-				movePose(offset, duration_slow, "rel");
+//				double offset[6] = {-WS_insert_x, 0, -7, 0, 0, 0};
+//				movePose(offset, duration_slow, "rel");
                 break;
 			}
 			case 7:
@@ -424,7 +424,7 @@ bool MainWindow::POCDoorSwitch1()
             {
 				double offset[6] = {0, -WS_push_SW_y, 0, 0, 0, 0};
 				movePose(offset, duration_super_slow, "rel");
-                break;
+				break;
             }
             case 4:
 			{
@@ -649,8 +649,29 @@ bool MainWindow::POCPlaceObj()
 			}
 			case 3:
             {
-                double offset[6] = {0, 0, WS_place_z, 0, 0, 0};
-                movePose(offset, duration_super_slow, "rel");
+//				switch(obj_cnt){
+//					case 2:
+//					{
+//						double cmd[6] = {-51.0273, 25.8979, 101.687, -0.0546217, 52.5039, -96.0023};
+//						moveJoint(cmd, 5);
+//						break;
+//					}
+//					case 9:
+//					{
+//						break;
+//					}
+//					case 11:
+//					{
+//						break;
+//					}
+//					default:
+//					{
+//						break;
+//					}
+//				}
+				moveSetForceCtrlOn();
+				double offset[6] = {0, 3, WS_place_z, 0, 0, 0};
+				movePose(offset, duration_super_slow, "rel");
                 break;
             }
 			case 4:
@@ -660,11 +681,12 @@ bool MainWindow::POCPlaceObj()
             }
 			case 5:
             {
+				moveSetForceCtrlOff();
                 double offset[6] = {0, 0, -WS_place_z, 0, 0, 0};
                 movePose(offset, duration_slow, "rel");
                 break;
             }
-            default:
+			default:
             {
                 finish = true;
                 break;
@@ -699,9 +721,9 @@ void MainWindow::movePose(double *cmd, double vel, std::string opt, std::string 
 		for(unsigned int i = 0; i < 6; i++){
 			cmd_f[i] = (float)cmd[i];
 		}
-		Drfl.amovel(cmd_f, vel1, acc1, 0.f, MOVE_MODE_RELATIVE, MOVE_REFERENCE_BASE);
-		cmd_type = MoveL;
-		pthread_create(&move_wait_thread, NULL, move_wait_func, this);
+		Drfl.movel(cmd_f, vel1, acc1, 0.f, MOVE_MODE_RELATIVE, MOVE_REFERENCE_BASE);
+//		cmd_type = MoveL;
+//		pthread_create(&move_wait_thread, NULL, move_wait_func, this);
 	}
 }
 
@@ -774,6 +796,7 @@ void MainWindow::moveSetForceCtrlOn()
 
 	Drfl.task_compliance_ctrl(stx);
 //	Drfl.set_desired_force(des_force, dir_force);
+	usleep(50000);
 }
 
 void MainWindow::moveSetForceCtrlOff()

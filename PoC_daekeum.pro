@@ -25,19 +25,11 @@ FORMS += mainwindow.ui
 
 LIBS += -lmodbus
 
-unix:!macx: LIBS += -L$$PWD/doosanapi/library/Linux/64bits/20.04/ -lPocoNet
+INCLUDEPATH += $$PWD/doosanapi/include
+DEPENDPATH += $$PWD/doosanapi/include
 
-INCLUDEPATH += $$PWD/doosanapi/library/Linux/64bits/20.04
-DEPENDPATH += $$PWD/doosanapi/library/Linux/64bits/20.04
+LIBS += -L$$PWD/doosanapi/library/Linux/64bits/20.04/ -lPocoNet
+LIBS += -L$$PWD/doosanapi/library/Linux/64bits/20.04/ -lPocoFoundation
+LIBS += -L$$PWD/doosanapi/library/Linux/64bits/20.04/ -lDRFL
 
-unix:!macx: LIBS += -L$$PWD/doosanapi/library/Linux/64bits/20.04/ -lPocoFoundation
-
-INCLUDEPATH += $$PWD/doosanapi/library/Linux/64bits/20.04
-DEPENDPATH += $$PWD/doosanapi/library/Linux/64bits/20.04
-
-unix:!macx: LIBS += -L$$PWD/doosanapi/library/Linux/64bits/20.04/ -lDRFL
-
-INCLUDEPATH += $$PWD/doosanapi/library/Linux/64bits/20.04
-DEPENDPATH += $$PWD/doosanapi/library/Linux/64bits/20.04
-
-unix:!macx: PRE_TARGETDEPS += $$PWD/doosanapi/library/Linux/64bits/20.04/libDRFL.a
+PRE_TARGETDEPS += $$PWD/doosanapi/library/Linux/64bits/20.04/libDRFL.a

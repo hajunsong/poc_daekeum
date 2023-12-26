@@ -164,8 +164,8 @@ private:
     // positions related to placing obj
 	double JS_over_place[6] = {-32.8864, 6.82389, 116.268, -0.0238322, 56.9876, -77.8806};
 	double WS_place_z = (248.514 - 341.905);
-	double Place_obj_offset_x = 133;
-	double Place_obj_offset_y = 156;
+	double Place_obj_offset_x = 134;
+	double Place_obj_offset_y = 155;
 
 	double JS_over_place_sub[4][6] = {{-27.9471, 14.0266, 106.958, -0.0180592, 59.0672, -72.9422},
 								 {-27.9471, 14.0266, 106.958, -0.0180592, 59.0672, -72.9422},
