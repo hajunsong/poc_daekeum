@@ -25,11 +25,11 @@ FORMS += mainwindow.ui
 
 LIBS += -lmodbus
 
-INCLUDEPATH += $$PWD/doosanapi/include
-DEPENDPATH += $$PWD/doosanapi/include
-
+LIBS += -L$$PWD/doosanapi/library/Linux/64bits/20.04/ -lDRFL
 LIBS += -L$$PWD/doosanapi/library/Linux/64bits/20.04/ -lPocoNet
 LIBS += -L$$PWD/doosanapi/library/Linux/64bits/20.04/ -lPocoFoundation
-LIBS += -L$$PWD/doosanapi/library/Linux/64bits/20.04/ -lDRFL
+
+INCLUDEPATH += $$PWD/doosanapi/library/Linux/64bits/20.04
+DEPENDPATH += $$PWD/doosanapi/library/Linux/64bits/20.04
 
 PRE_TARGETDEPS += $$PWD/doosanapi/library/Linux/64bits/20.04/libDRFL.a

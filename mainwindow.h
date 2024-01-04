@@ -140,16 +140,16 @@ private:
 
     // positions related to picking obj
 	double JS_ready2pick2[6] = {0, 0, 90, 0, 90, -45};
-	double JS_ready2pick3[6] = {12.0209, 1.83718, 121.152, 0.397599, 56.5446, -33.2035};
-	double WS_to_obj_z = (249.589 - 346.821);
+	double JS_ready2pick3[6] = {11.9293, 3.30525, 122.807, 0.395822, 53.4403, -33.3212};
+	double WS_to_obj_z = (249.589 - 321.021);
     double JS_withdraw_pick[6] = {2.04024,-2.87771,2.05892,0.787739,1.56417,-3.17643};
 	double Pick_obj_offset_x = 134;
 	double Pick_obj_offset_y = 155;
 
     // positions related to inserting obj
 	double JS_to_chuck1[6] = {66.6799, -30.6629, 104.179, 11.8705, 78.3102, -115.895};
-	double JS_to_chuck3[6] = {78.4477, 60.0318, 43.9998, 89.782, 99.1314, 73.403};
-	double WS_insert_x = (-20.5744 - 61.5697);
+	double JS_to_chuck3[6] = {78.8257, 59.3107, 44.9816, 88.4465, 98.3802, 72.9333};
+	double WS_insert_x = (-13.0115 - 53.5949) - 10;
 
 	// positions related to door
 	double JS_to_door_SW2[6] = {21.3321, -17.4408, 109.758, -179.73, -85.8328, 20.5752};
@@ -162,8 +162,8 @@ private:
 	double WS_remove_x = (-14.6285 - 65.9852);
 
     // positions related to placing obj
-	double JS_over_place[6] = {-32.8864, 6.82389, 116.268, -0.0238322, 56.9876, -77.8806};
-	double WS_place_z = (248.514 - 341.905);
+	double JS_over_place[6] = {-32.899, 6.47621, 116.291, -0.0269408, 57.338, -77.9006};
+	double WS_place_z = (246.232 - 344.999);
 	double Place_obj_offset_x = 134;
 	double Place_obj_offset_y = 155;
 

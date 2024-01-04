@@ -352,7 +352,7 @@ bool MainWindow::POCChuck1Obj()
             case 3:
             {
 				moveSetForceCtrlOn();
-				double offset[6] = {WS_insert_x, -3, 0, 0, 0, 0};
+				double offset[6] = {WS_insert_x, 0, 0, 0, 0, 0};
 				movePose(offset, duration_super_slow, "rel");
 
                 break;
@@ -370,13 +370,13 @@ bool MainWindow::POCChuck1Obj()
             case 6:
             {
 				moveSetForceCtrlOff();
-//				double offset[6] = {-WS_insert_x, 0, -7, 0, 0, 0};
-//				movePose(offset, duration_slow, "rel");
+				double offset[6] = {-WS_insert_x, 0, -5, 0, 0, 0};
+				movePose(offset, duration_slow, "rel");
                 break;
 			}
 			case 7:
 			{
-				moveJoint(JS_to_chuck3, duration_slow);
+//				moveJoint(JS_to_chuck3, duration_slow);
 				break;
 			}
 			case 8:
@@ -670,7 +670,7 @@ bool MainWindow::POCPlaceObj()
 //					}
 //				}
 				moveSetForceCtrlOn();
-				double offset[6] = {0, 3, WS_place_z, 0, 0, 0};
+				double offset[6] = {0, 0, WS_place_z, 0, 0, 0};
 				movePose(offset, duration_super_slow, "rel");
                 break;
             }
@@ -721,9 +721,9 @@ void MainWindow::movePose(double *cmd, double vel, std::string opt, std::string 
 		for(unsigned int i = 0; i < 6; i++){
 			cmd_f[i] = (float)cmd[i];
 		}
-		Drfl.movel(cmd_f, vel1, acc1, 0.f, MOVE_MODE_RELATIVE, MOVE_REFERENCE_BASE);
-//		cmd_type = MoveL;
-//		pthread_create(&move_wait_thread, NULL, move_wait_func, this);
+		Drfl.amovel(cmd_f, vel1, acc1, 0.f, MOVE_MODE_RELATIVE, MOVE_REFERENCE_BASE);
+		cmd_type = MoveL;
+		pthread_create(&move_wait_thread, NULL, move_wait_func, this);
 	}
 }
 
@@ -991,9 +991,9 @@ void MainWindow::robotStateUpdate()
 	if(state == 2) {
 		robot_moving = true;
 	}
-//	else{
-//		robot_moving = false;
-//	}
+	else{
+		robot_moving = false;
+	}
 	memcpy(jnt, Drfl.get_current_posj()->_fPosition, sizeof(float)*6);
 	memcpy(pose, Drfl.get_current_posx()->_fTargetPos, sizeof(float)*6);
 	memset(mat, 0, sizeof(float)*16);
