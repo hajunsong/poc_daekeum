@@ -649,26 +649,6 @@ bool MainWindow::POCPlaceObj()
 			}
 			case 3:
             {
-//				switch(obj_cnt){
-//					case 2:
-//					{
-//						double cmd[6] = {-51.0273, 25.8979, 101.687, -0.0546217, 52.5039, -96.0023};
-//						moveJoint(cmd, 5);
-//						break;
-//					}
-//					case 9:
-//					{
-//						break;
-//					}
-//					case 11:
-//					{
-//						break;
-//					}
-//					default:
-//					{
-//						break;
-//					}
-//				}
 				moveSetForceCtrlOn();
 				double offset[6] = {0, 0, WS_place_z, 0, 0, 0};
 				movePose(offset, duration_super_slow, "rel");
@@ -998,21 +978,10 @@ void MainWindow::robotStateUpdate()
 	memcpy(pose, Drfl.get_current_posx()->_fTargetPos, sizeof(float)*6);
 	memset(mat, 0, sizeof(float)*16);
 	for(int i = 0; i < 3; i++){
-//		for(int j = 0; j < 3; j++){
-//			mat[i*4 + j] = Drfl.get_current_rotm()[i][j];
-//		}
 		memcpy(mat + i*4, Drfl.get_current_rotm()[i], sizeof(float)*3);
 		mat[i*4 + 3] = pose[i];
 	}
 	mat[15] = 1;
-
-//	for(int i = 0; i < 4; i++){
-//		for(int j = 0; j < 4; j++){
-//			std::cout << mat[i*4 + j] << ", ";
-//		}
-//		std::cout << std::endl;
-//	}
-//	std::cout << std::endl;
 
 	ui->txtRobotState->setText(QString::number(state));
 
@@ -1022,11 +991,6 @@ void MainWindow::robotStateUpdate()
 	for(unsigned int i = 0; i < 6; i++){
 		txtPose[i]->setText(QString::number(pose[i]));
 	}
-
-//	GPIO_CTRLBOX_DIGITAL_INDEX_1= 0,
-//    GPIO_CTRLBOX_DIGITAL_INDEX_2,
-//    GPIO_CTRLBOX_DIGITAL_INDEX_3,
-//    GPIO_CTRLBOX_DIGITAL_INDEX_4,
 
 	door_close = Drfl.get_digital_input(GPIO_CTRLBOX_DIGITAL_INDEX_1);
 	chuck_close = Drfl.get_digital_input(GPIO_CTRLBOX_DIGITAL_INDEX_3);
@@ -1047,80 +1011,6 @@ void MainWindow::robotStateUpdate()
 		ui->txtStateChuck->setText("Close");
 	if(!chuck_open && !chuck_close)
 		ui->txtStateChuck->setText("Open");
-
-
-//	LPROBOT_FORCE force = Drfl.get_tool_force();
-//	for(int i = 0; i < 3; i++){
-//		std::cout << force->_fForce[i] << ", ";
-//	}
-//	std::cout << std::endl;
-
-//    robotInfor = RobotInfo();
-
-//    state = robotInfor.state;
-//    ui->txtRobotStatus->setText(QString::number(state));
-
-//    if(state == 2.0) {
-//        moving = true;
-//    }
-//    else{
-//        moving = false;
-//    }
-
-//    for(unsigned int i = 0; i < 6; i++){
-//        txtJoint[i]->setText(QString::number(robotInfor.jnt[i]));
-//    }
-//    for(unsigned int i = 0; i < 3; i++){
-//        txtPose[i]->setText(QString::number(robotInfor.mat[i*4 + 3]));
-//    }
-
-//    for(unsigned int i = 0; i < 6; i++){
-//        jnt[i] = robotInfor.jnt[i];
-//    }
-
-//    for(unsigned int i = 0; i < 3; i++){
-//        for(unsigned int j = 0; j < 3; j++){
-//            mat[i*3 + j] = robotInfor.mat[i*4 + j];
-//        }
-//    }
-//    for(unsigned int i = 0; i < 3; i++){
-//        pos[i] = robotInfor.mat[i*4 + 3];
-//    }
-
-////    printf("\n%f, %f, %f, %f\n", robotInfor.mat[0], robotInfor.mat[1], robotInfor.mat[2], robotInfor.mat[3]);
-////    printf("%f, %f, %f, %f\n", robotInfor.mat[4], robotInfor.mat[5], robotInfor.mat[6], robotInfor.mat[7]);
-////    printf("%f, %f, %f, %f\n", robotInfor.mat[8], robotInfor.mat[9], robotInfor.mat[10], robotInfor.mat[11]);
-////    printf("%f, %f, %f, %f\n\n", robotInfor.mat[12], robotInfor.mat[13], robotInfor.mat[14], robotInfor.mat[15]);
-
-//    double ang_x, ang_y, ang_z;
-//    Conf.InverseRot(mat, &ang_x,&ang_y,&ang_z);
-
-//    txtPose[3]->setText(QString::number(ang_x));
-//    txtPose[4]->setText(QString::number(ang_y));
-//    txtPose[5]->setText(QString::number(ang_z));
-
-//    DI = (int)ControlBoxDigitalIn();
-////    printf("Digital Input(0 ~ 7)  : %d %d %d %d %d %d %d %d\n", DI&0x01, DI&0x02, DI&0x04, DI&0x08, DI&0x10, DI&0x20, DI&0x40, DI&0x80);
-//    door_close = DI&0x10;
-//    chuck_open = DI&0x02;
-//    chuck_close = DI&0x01;
-
-//    if(!chuck_open && !chuck_close){
-//        chuck_moving = true;
-//    }
-//    else{
-//        chuck_moving = false;
-//    }
-
-//    ControlBoxDigitalOut(DO);
-
-//        printf("Door %s\n", door_close ? "close" : "open");
-//    if(chuck_open && !chuck_close)
-//        printf("Chuck open\n");
-//    if(!chuck_open && chuck_close)
-//        printf("Chuck close\n");
-//    if(!chuck_open && !chuck_close)
-//        printf("Chuck moving\n");
 }
 
 void MainWindow::gripperStateUpdate()
