@@ -12,7 +12,7 @@
 #include "customsettings.h"
 #include "tcpsocket.h"
 
-#include "doosan.h"
+#include "sdkv2.h"
 
 /*
  * Zimmer Gripper : 192.168.0.254, 502
@@ -24,10 +24,9 @@ enum {Wait=0, Init, Start, TestStart};
 enum {None=0, MoveJ, MoveL, GripOn, GripOff, GripCustom, ChuckOpen, ChuckClose, DoorOpen, DoorClose, LatheWait};
 enum {Ready=0, Pick, Chuck1, Door1, LatheStart1, LatheWait1, UnChuck1, Place, RePick, Chuck2, Door2, LatheStart2, LatheWait2, UnChuck2, RePlace};
 enum {TestPick=1, TestPlace, TestFinish};
-const double duration_super_slow = 15;
-const double duration_slow = 50;
-const double duration_fast = 100;
-const double duration_super_fast = 300;
+const double duration_super_slow = 1;
+const double duration_slow = 10;
+const double duration_fast = 20;
 
 namespace Ui {
     class MainWindow;
@@ -42,6 +41,10 @@ public:
     ~MainWindow();
     static void *move_wait_func(void *arg);
 
+	sdk robot1;
+	sdk_info robotInfor;
+//	RConf Conf;
+
 private:
     Ui::MainWindow *ui;
 	CustomSettings *customSettings;
@@ -54,7 +57,7 @@ private:
 
 //    double mat[9], pose[6], jnt[6], state;
 	int state;
-	float pose[6], jnt[6], mat[16];
+	double pose[6], jnt[6], T_mat[16], R[9];
 //	LPROBOT_POSE pose, jnt;
     std::array<QLineEdit*, 6> txtJoint, txtPose;
 

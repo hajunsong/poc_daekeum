@@ -64,36 +64,12 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent), ui(new Ui::MainWi
 
 	customSettings = new CustomSettings(ui);
 	customSettings->loadConfigFile();
-
-	g_bHasControlAuthority = FALSE;
-	g_TpInitailizingComplted = FALSE;
-	g_mStat = FALSE;
-	g_Stop = FALSE;
-	moving = FALSE;
-
-	Drfl.set_on_homming_completed(OnHommingCompleted);
-	Drfl.set_on_monitoring_data(OnMonitoringDataCB);
-	Drfl.set_on_monitoring_data_ex(OnMonitoringDataExCB);
-	Drfl.set_on_monitoring_ctrl_io(OnMonitoringCtrlIOCB);
-	Drfl.set_on_monitoring_ctrl_io_ex(OnMonitoringCtrlIOExCB);
-	Drfl.set_on_monitoring_state(OnMonitoringStateCB);
-	Drfl.set_on_monitoring_access_control(OnMonitroingAccessControlCB);
-	Drfl.set_on_tp_initializing_completed(OnTpInitializingCompleted);
-	Drfl.set_on_log_alarm(OnLogAlarm);
-	Drfl.set_on_tp_popup(OnTpPopup);
-	Drfl.set_on_tp_log(OnTpLog);
-	Drfl.set_on_tp_progress(OnTpProgress);
-	Drfl.set_on_tp_get_user_input(OnTpGetuserInput);
-	Drfl.set_on_rt_monitoring_data(OnRTMonitoringData);
-
-	Drfl.set_on_program_stopped(OnProgramStopped);
-	Drfl.set_on_disconnected(OnDisConnected);
 }
 
 MainWindow::~MainWindow()
 {
 	customSettings->saveConfigFile();
-	Drfl.close_connection();
+	robot1.RobotDisconnect();
 	delete tcpSocket;
     delete customSettings;
     delete ui;
@@ -291,7 +267,7 @@ bool MainWindow::POCPickObj()
                 double offset[6] = {0, 0, 0, 0, 0, 0};
 				offset[1] = -Pick_obj_offset_x*(obj_cnt%3);
 				offset[0] = Pick_obj_offset_y*(obj_cnt/3);
-				movePose(offset, duration_super_fast, "rel");
+				movePose(offset, duration_fast, "rel");
                 break;
             }
             case 4:
@@ -411,7 +387,7 @@ bool MainWindow::POCDoorSwitch1()
             case 1:
             {
 //                if(door_cnt%2 == 0)
-                    moveJoint(JS_over_door_SW, duration_fast);
+					moveJoint(JS_over_door_SW, duration_slow);
                 break;
             }
             case 2:
@@ -428,7 +404,7 @@ bool MainWindow::POCDoorSwitch1()
             }
             case 4:
 			{
-				moveJoint(JS_to_door_SW2, duration_fast);
+				moveJoint(JS_to_door_SW2, duration_slow);
                 break;
             }
 			case 5:
@@ -525,7 +501,7 @@ bool MainWindow::POCLatheWait1()
 			}
 			case 1:
 			{
-				moveJoint(JS_lathewait2, duration_slow);
+				moveJoint(JS_lathewait2, duration_fast);
 //				tcpSocket->sendData('1');
 				break;
 			}
@@ -681,13 +657,18 @@ bool MainWindow::POCPlaceObj()
 void MainWindow::moveJoint(double cmd[], double vel)
 {
     if(!cmd_flag){
-		float cmd_f[6];
+		robot1.SetVelocity(vel);
+		double cmd_rad[6] = {0,};
+		std::cout << "movej cmd : ";
 		for(unsigned int i = 0; i < 6; i++){
-			cmd_f[i] = (float)cmd[i];
+			cmd_rad[i] = cmd[i]*M_PI/180.0;
+			std::cout << cmd_rad[i] << " ";
 		}
-		Drfl.amovej(cmd_f, (float)vel, 30);
+		std::cout << std::endl;
+
+		robot1.movej(cmd_rad);
 		cmd_type = MoveJ;
-		memcpy(cmd_value, cmd, sizeof(double)*6);
+		memcpy(cmd_value, cmd_rad, sizeof(double)*6);
 		pthread_create(&move_wait_thread, NULL, move_wait_func, this);
     }
 }
@@ -695,15 +676,66 @@ void MainWindow::moveJoint(double cmd[], double vel)
 void MainWindow::movePose(double *cmd, double vel, std::string opt, std::string coord)
 {
     if(!cmd_flag){
-		float vel1[2] = {(float)vel, (float)vel};
-		float acc1[2] = {500, 500};
-		float cmd_f[6];
-		for(unsigned int i = 0; i < 6; i++){
-			cmd_f[i] = (float)cmd[i];
+		robot1.SetVelocity(vel);
+
+		double cmd_m[6];
+		for(unsigned int i = 0; i < 3; i++){
+			cmd_m[i] = cmd[i]*0.001;
+			cmd_m[i + 3] = cmd[i + 3]*M_PI/180.0;
 		}
-		Drfl.amovel(cmd_f, vel1, acc1, 0.f, MOVE_MODE_RELATIVE, MOVE_REFERENCE_BASE);
-		cmd_type = MoveL;
-		pthread_create(&move_wait_thread, NULL, move_wait_func, this);
+		std::cout << "movel cmd : ";
+		for(unsigned int i = 0; i < 6; i++){
+			std::cout << cmd_m[i] << " ";
+		}
+
+		if(coord == "tcp"){
+			if(opt == "rel"){
+				double cmd_mat[16] = {0,};
+				cmd_mat[0] = 1; cmd_mat[1] = 0; cmd_mat[2] = 0;
+				cmd_mat[4] = 0; cmd_mat[5] = 1; cmd_mat[6] = 0;
+				cmd_mat[8] = 0; cmd_mat[9] = 0; cmd_mat[10] = 1;
+
+				cmd_mat[0*4 + 3] = cmd_m[0];
+				cmd_mat[1*4 + 3] = cmd_m[1];
+				cmd_mat[2*4 + 3] = cmd_m[2];
+				cmd_mat[15] = 1;
+
+				robot1.movel(1, cmd_mat);
+				cmd_type = MoveL;
+				memcpy(cmd_value, cmd_m, sizeof(double)*6);
+				pthread_create(&move_wait_thread, NULL, move_wait_func, this);
+			}
+		}
+		else{
+			if(opt == "abs"){
+				double cmd_mat[16] = {0,};
+				memcpy(cmd_mat, cmd_m, sizeof(double)*16);
+				robot1.movel(0, cmd_mat);
+				cmd_type = MoveL;
+				memcpy(cmd_value, cmd_m, sizeof(double)*6);
+				pthread_create(&move_wait_thread, NULL, move_wait_func, this);
+			}
+
+			if(opt == "rel"){
+				for(unsigned int i = 0; i < 3; i++){
+					cmd_m[i] += pose[i];
+				}
+				double cmd_mat[16] = {0,};
+				for(unsigned int i = 0; i < 3; i++){
+					for(unsigned int j = 0; j < 3; j++){
+						cmd_mat[i*4 + j] = R[i*3 + j];
+					}
+				}
+				cmd_mat[0*4 + 3] = cmd_m[0];
+				cmd_mat[1*4 + 3] = cmd_m[1];
+				cmd_mat[2*4 + 3] = cmd_m[2];
+				cmd_mat[15] = 1;
+				robot1.movel(0, cmd_mat);
+				cmd_type = MoveL;
+				memcpy(cmd_value, cmd_m, sizeof(double)*6);
+				pthread_create(&move_wait_thread, NULL, move_wait_func, this);
+			}
+		}
 	}
 }
 
@@ -728,7 +760,8 @@ void MainWindow::moveGripperOff()
 void MainWindow::moveChuckOpen()
 {
 	if(!cmd_flag){
-		Drfl.set_digital_output(GPIO_CTRLBOX_DIGITAL_INDEX_1, true);
+//		Drfl.set_digital_output(GPIO_CTRLBOX_DIGITAL_INDEX_1, true);
+		robot1.ControlBoxDigitalOut(1);
 		cmd_type = ChuckOpen;
 		usleep(10000);
 		pthread_create(&move_wait_thread, NULL, move_wait_func, this);
@@ -738,7 +771,8 @@ void MainWindow::moveChuckOpen()
 void MainWindow::moveChuckClose()
 {
 	if(!cmd_flag){
-		Drfl.set_digital_output(GPIO_CTRLBOX_DIGITAL_INDEX_1, true);
+//		Drfl.set_digital_output(GPIO_CTRLBOX_DIGITAL_INDEX_1, true);
+		robot1.ControlBoxDigitalOut(1);
 		cmd_type = ChuckClose;
 		usleep(10000);
 		pthread_create(&move_wait_thread, NULL, move_wait_func, this);
@@ -770,57 +804,28 @@ void MainWindow::moveLathe()
 
 void MainWindow::moveSetForceCtrlOn()
 {
-	float stx[6] = {3000, 3000, 3000, 200, 200, 200};
-//	float des_force[6] = {-50, 0, 0, 0, 0, 0};
-//	unsigned char dir_force[6] = {1, 0, 0, 0, 0, 0};
-
-	Drfl.task_compliance_ctrl(stx);
-//	Drfl.set_desired_force(des_force, dir_force);
+	robot1.RobotComplianceCtrlOn();
 	usleep(50000);
 }
 
 void MainWindow::moveSetForceCtrlOff()
 {
-//	Drfl.release_force();
-	Drfl.release_compliance_ctrl();
+	robot1.RobotComplianceCtrlOff();
 	usleep(50000);
 }
 
 void MainWindow::btnRobotConnectClicked()
 {
     if(ui->btnRobotConnect->text().compare("Connect")){
-//        RobotDisconnect();
-
-		Drfl.close_connection();
+		robot1.RobotDisconnect();
 
         ui->btnRobotConnect->setText("Connect");
 
 		robot_connected = false;
 	}
     else{
-//        SetRobotConf(UR10, ui->txtRobotIP->text().toStdString().c_str(), ui->txtRobotPORT->text().toInt());
-//        RobotConnect();
-
-		// ???? ????
-		assert(Drfl.open_connection(ui->txtRobotIP->text().toStdString().c_str(), ui->txtRobotPORT->text().toInt()));
-
-		// ???? ???? ???
-		SYSTEM_VERSION tSysVerion = {
-			'\0',
-		};
-		Drfl.get_system_version(&tSysVerion);
-		// ?????? ?????? ???? ????
-		Drfl.setup_monitoring_version(1);
-		Drfl.set_robot_control(CONTROL_SERVO_ON);
-		cout << "System version: " << tSysVerion._szController << endl;
-		cout << "Library version: " << Drfl.get_library_version() << endl;
-
-		while ((Drfl.get_robot_state() != STATE_STANDBY) || !g_bHasControlAuthority)
-			// Sleep(1000);
-			this_thread::sleep_for(std::chrono::milliseconds(1000));
-
-		assert(Drfl.set_robot_mode(ROBOT_MODE_AUTONOMOUS));
-		assert(Drfl.set_robot_system(ROBOT_SYSTEM_REAL));
+		robot1.SetRobotConf(M1013, ui->txtRobotIP->text().toStdString().c_str(), ui->txtRobotPORT->text().toInt());
+		robot1.RobotConnect();
 
         ui->btnRobotConnect->setText("Disconnect");
 
@@ -940,7 +945,7 @@ void MainWindow::btnPrintClicked()
     std::cout << std::endl;
     for(unsigned int i = 0; i < 3; i++){
         for(unsigned int j = 0; j < 3; j++){
-			std::cout << mat[i*4 + j] << ",";
+			std::cout << T_mat[i*4 + j] << ",";
         }
         std::cout << std::endl;
     }
@@ -966,22 +971,30 @@ void MainWindow::btnGripperReleaseClicked()
 
 void MainWindow::robotStateUpdate()
 {
-	state = Drfl.check_motion();
-	if(state == 0) state = 1;
+	robotInfor = robot1.RobotInfo();
+
+	state = robotInfor.state;
 	if(state == 2) {
 		robot_moving = true;
 	}
 	else{
 		robot_moving = false;
 	}
-	memcpy(jnt, Drfl.get_current_posj()->_fPosition, sizeof(float)*6);
-	memcpy(pose, Drfl.get_current_posx()->_fTargetPos, sizeof(float)*6);
-	memset(mat, 0, sizeof(float)*16);
-	for(int i = 0; i < 3; i++){
-		memcpy(mat + i*4, Drfl.get_current_rotm()[i], sizeof(float)*3);
-		mat[i*4 + 3] = pose[i];
+
+	memcpy(jnt, robotInfor.jnt, sizeof(double)*6);
+	memset(T_mat, 0, sizeof(double)*16);
+	memcpy(T_mat, robotInfor.mat, sizeof(double)*16);
+
+	pose[0] = T_mat[3];
+	pose[1] = T_mat[7];
+	pose[2] = T_mat[11];
+	for(unsigned int i = 0; i < 3; i++){
+		for(unsigned int j = 0; j < 3; j++){
+			R[i*3 + j] = T_mat[i*4 + j];
+		}
 	}
-	mat[15] = 1;
+
+	robot1.Conf.InverseRot(R, &pose[3], &pose[4], &pose[5]);
 
 	ui->txtRobotState->setText(QString::number(state));
 
@@ -992,9 +1005,10 @@ void MainWindow::robotStateUpdate()
 		txtPose[i]->setText(QString::number(pose[i]));
 	}
 
-	door_close = Drfl.get_digital_input(GPIO_CTRLBOX_DIGITAL_INDEX_1);
-	chuck_close = Drfl.get_digital_input(GPIO_CTRLBOX_DIGITAL_INDEX_3);
-	chuck_open = Drfl.get_digital_input(GPIO_CTRLBOX_DIGITAL_INDEX_4);
+	int din = robot1.ControlBoxDigitalIn();
+	door_close = (din&1) || (din&2);
+	chuck_close = din&4;
+	chuck_open = din&8;
 
 	ui->txtStateDoor->setText(door_close ? "Close" : "Open");
 
@@ -1043,12 +1057,12 @@ void* MainWindow::move_wait_func(void *arg){
         switch(pThis->cmd_type){
             case MoveJ:
             {
-                double err_max = abs(pThis->cmd_value[0] - pThis->jnt[0]);
-                double err = 0;
-                for(unsigned int i = 1; i < 6; i++){
-                    err = abs(pThis->cmd_value[i] - pThis->jnt[i]);
-                    err_max = err > err_max ? err : err_max;
-                }
+//                double err_max = abs(pThis->cmd_value[0] - pThis->jnt[0]);
+//                double err = 0;
+//                for(unsigned int i = 1; i < 6; i++){
+//                    err = abs(pThis->cmd_value[i] - pThis->jnt[i]);
+//                    err_max = err > err_max ? err : err_max;
+//                }
 				if(pThis->robot_moving && pThis->state == 1) {
                     std::cout << "move finish" << std::endl;
 					pThis->robot_moving = false;
@@ -1060,11 +1074,11 @@ void* MainWindow::move_wait_func(void *arg){
                     run = false;
 					break;
                 }
-                if(err_max < 1e-3) {
-                    std::cout << "goal reach" << std::endl;
-                    run = false;
-					break;
-                }
+//                if(err_max < 1e-3) {
+//                    std::cout << "goal reach" << std::endl;
+//                    run = false;
+//					break;
+//                }
 //                std::cout << err_max << std::endl;
                 cnt++;
 
@@ -1127,24 +1141,28 @@ void* MainWindow::move_wait_func(void *arg){
             case ChuckOpen:
 			{
 				if(!pThis->chuck_moving && !pThis->chuck_open && pThis->chuck_close){
-					Drfl.set_digital_output(GPIO_CTRLBOX_DIGITAL_INDEX_1, true);
+//					Drfl.set_digital_output(GPIO_CTRLBOX_DIGITAL_INDEX_1, true);
+					pThis->robot1.ControlBoxDigitalOut(1);
 				}
 				if(!pThis->chuck_moving && pThis->chuck_open && !pThis->chuck_close){
 					run = false;
 					pThis->cmd_type = None;
-					Drfl.set_digital_output(GPIO_CTRLBOX_DIGITAL_INDEX_1, false);
+//					Drfl.set_digital_output(GPIO_CTRLBOX_DIGITAL_INDEX_1, false);
+					pThis->robot1.ControlBoxDigitalOut(0);
 				}
                 break;
             }
             case ChuckClose:
             {
 				if(!pThis->chuck_moving && pThis->chuck_open && !pThis->chuck_close){
-					Drfl.set_digital_output(GPIO_CTRLBOX_DIGITAL_INDEX_1, true);
+//					Drfl.set_digital_output(GPIO_CTRLBOX_DIGITAL_INDEX_1, true);
+					pThis->robot1.ControlBoxDigitalOut(1);
 				}
 				if(!pThis->chuck_moving && !pThis->chuck_open && pThis->chuck_close){
 					run = false;
 					pThis->cmd_type = None;
-					Drfl.set_digital_output(GPIO_CTRLBOX_DIGITAL_INDEX_1, false);
+//					Drfl.set_digital_output(GPIO_CTRLBOX_DIGITAL_INDEX_1, false);
+					pThis->robot1.ControlBoxDigitalOut(0);
 				}
                 break;
             }
