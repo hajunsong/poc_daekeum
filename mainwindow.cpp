@@ -345,13 +345,13 @@ bool MainWindow::POCChuck1Obj()
             }
             case 6:
             {
-				moveSetForceCtrlOff();
 				double offset[6] = {-WS_insert_x, 0, -5, 0, 0, 0};
 				movePose(offset, duration_slow, "rel");
                 break;
 			}
 			case 7:
 			{
+                moveSetForceCtrlOff();
 //				moveJoint(JS_to_chuck3, duration_slow);
 				break;
 			}
@@ -637,9 +637,13 @@ bool MainWindow::POCPlaceObj()
             }
 			case 5:
             {
-				moveSetForceCtrlOff();
                 double offset[6] = {0, 0, -WS_place_z, 0, 0, 0};
                 movePose(offset, duration_slow, "rel");
+                break;
+            }
+            case 6:
+            {
+                moveSetForceCtrlOff();
                 break;
             }
 			default:
@@ -805,13 +809,13 @@ void MainWindow::moveLathe()
 void MainWindow::moveSetForceCtrlOn()
 {
 	robot1.RobotComplianceCtrlOn();
-	usleep(50000);
+    usleep(100000);
 }
 
 void MainWindow::moveSetForceCtrlOff()
 {
 	robot1.RobotComplianceCtrlOff();
-	usleep(50000);
+    usleep(100000);
 }
 
 void MainWindow::btnRobotConnectClicked()

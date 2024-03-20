@@ -152,7 +152,7 @@ private:
     // positions related to inserting obj
 	double JS_to_chuck1[6] = {66.6799, -30.6629, 104.179, 11.8705, 78.3102, -115.895};
 	double JS_to_chuck3[6] = {78.8257, 59.3107, 44.9816, 88.4465, 98.3802, 72.9333};
-	double WS_insert_x = (-13.0115 - 53.5949) - 10;
+    double WS_insert_x = (-13.0115 - 53.5949) - 5;
 
 	// positions related to door
 	double JS_to_door_SW2[6] = {21.3321, -17.4408, 109.758, -179.73, -85.8328, 20.5752};
@@ -166,7 +166,7 @@ private:
 
     // positions related to placing obj
 	double JS_over_place[6] = {-32.899, 6.47621, 116.291, -0.0269408, 57.338, -77.9006};
-	double WS_place_z = (246.232 - 344.999);
+    double WS_place_z = (246.232 - 344.999) - 2;
 	double Place_obj_offset_x = 134;
 	double Place_obj_offset_y = 155;
 
